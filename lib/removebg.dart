@@ -3,8 +3,11 @@ library removebg;
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:onnxruntime/onnxruntime.dart';
 
 /// A background removal and text rerenderer for images.
 class Removebg {
@@ -17,6 +20,25 @@ class Removebg {
       // Convert ImageProvider to Unint8List
 
       Uint8List? imageBytes = await _imageProviderToBytes(imageProvider_);
+
+      if (imageBytes == null) {
+        throw Exception('Invalid Image');
+      }
+
+      // load the ONNX model for background segmentation
+      final sessionOptions = OrtSessionOptions();
+      const rawAssetFileName = 'assets/backgroud_removel_model.onnx';
+      final modelBytes = await rootBundle.load(rawAssetFileName);
+      final bytes = modelBytes.buffer.asUint8List();
+      final session = OrtSession.fromBuffer(bytes, sessionOptions);
+
+      // Preprocess the image
+      final preprocessedImage = _preprocessImage(imageBytes);
+
+      // Run inference
+      final inputs = {
+        'input': preprocessedImage,
+      };
       return imageProvider_;
     } catch (e) {
       print('Background removal error: $e');
@@ -52,5 +74,40 @@ class Removebg {
       pragma('Image conversion error: $e');
       return null;
     }
+  }
+
+  /// Preprocesses image for ONNX model input
+  static Uint8List _preprocessImage(Uint8List imageBytes) {
+    // Decode the image
+    final image = img.decodeImage(imageBytes);
+
+    if (image == null) {
+      throw Exception('Invalid Image');
+    }
+
+    // Resize image to model input size (512 x 512)
+    final resizedImage = img.copyResize(image, width: 512, height: 512);
+
+    final Float32List floatList =
+        Float32List(1 * 3 * resizedImage.width * resizedImage.height);
+
+    for (int y = 0; y < resizedImage.height; y++) {
+      for (int x = 0; x < resizedImage.width; x++) {
+        final pixel = resizedImage.getPixel(
+          x,
+          y,
+        );
+        final index = (y * resizedImage.width + x);
+
+        // Normalize Pixel Values to [-1, 1]
+        floatList[index] = (pixel.r / 255.0 - 0.5 * 2.0);
+        floatList[index + resizedImage.width * resizedImage.height] =
+            (pixel.g / 255.0 - 0.5 * 2.0);
+        floatList[index + 2 * resizedImage.width * resizedImage.height] =
+            (pixel.b / 255.0 - 0.5 * 2.0);
+      }
+    }
+
+    return floatList.buffer.asUint8List();
   }
 }
