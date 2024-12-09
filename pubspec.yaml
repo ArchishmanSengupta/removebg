@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   image: ^4.3.0
   onnxruntime: ^1.4.1
 
@@ -19,10 +20,5 @@ dev_dependencies:
   flutter_lints: ^4.0.0
 
 flutter:
-  plugin:
-    platforms:
-      android: 
-        package: com.archiesengupta.removebg
-        pluginClass: RemovebgPlugin
-      ios:
-        pluginClass: RemovebgPlugin
+  assets:
+    - assets/

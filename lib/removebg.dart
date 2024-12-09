@@ -28,7 +28,7 @@ class Removebg {
 
       // load the ONNX model for background segmentation
       final sessionOptions = OrtSessionOptions();
-      const rawAssetFileName = 'assets/isnet_quint8.onnx'; // smaller model
+      const rawAssetFileName = 'assets/isnet_quint8'; // smaller model
       final modelBytes = await rootBundle.load(rawAssetFileName);
       final bytes = modelBytes.buffer.asUint8List();
       final session = OrtSession.fromBuffer(bytes, sessionOptions);
