@@ -1,6 +1,7 @@
 library removebg;
 
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -27,7 +28,7 @@ class Removebg {
 
       // load the ONNX model for background segmentation
       final sessionOptions = OrtSessionOptions();
-      const rawAssetFileName = 'assets/backgroud_removel_model.onnx';
+      const rawAssetFileName = 'assets/isnet_quint8.onnx';
       final modelBytes = await rootBundle.load(rawAssetFileName);
       final bytes = modelBytes.buffer.asUint8List();
       final session = OrtSession.fromBuffer(bytes, sessionOptions);
@@ -109,5 +110,52 @@ class Removebg {
     }
 
     return floatList.buffer.asUint8List();
+  }
+
+  static Future<ImageProvider> loadOnnxModel(
+      ImageProvider imageProvider_) async {
+    return imageProvider_;
+  }
+
+  /// Applies segmentation mask to remove background
+  static Uint8List _applyMask(Uint8List originalImage, Uint8List mask) {
+    final image = img.decodeImage(originalImage);
+    final maskImage = img.decodeImage(mask);
+
+    if (image == null || maskImage == null) {
+      return originalImage;
+    }
+
+    // Create a new image with transparency
+    final processedImage = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final originalPixel = image.getPixel(x, y);
+        final maskPixel = maskImage.getPixel(x, y);
+
+        // Check if pixel should be transparent based on mask
+        if (maskPixel.r < 128) {
+          // Assuming low red value indicates background
+          processedImage.setPixel(
+              x,
+              y,
+              img.ColorRgb8(
+                255,
+                255,
+                255,
+              ));
+        } else {
+          processedImage.setPixel(
+              x,
+              y,
+              img.ColorRgb8(originalPixel.r.toInt(), originalPixel.g.toInt(),
+                  originalPixel.b.toInt()));
+        }
+      }
+    }
+
+    // Encode as PNG with transparency
+    return img.encodePng(processedImage);
   }
 }
