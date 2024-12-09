@@ -40,7 +40,15 @@ class Removebg {
       final inputs = {
         'input': preprocessedImage,
       };
-      return imageProvider_;
+
+      final outputs = session
+          .run(OrtRunOptions(), inputs.cast<String, OrtValue>(), ['output']);
+
+      // process segmentation mask
+      final mask = outputs[0] as Uint8List;
+      final processedImage = _applyMask(imageBytes, mask);
+
+      return MemoryImage(processedImage);
     } catch (e) {
       print('Background removal error: $e');
       return imageProvider_;
