@@ -1,5 +1,3 @@
-library removebg;
-
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -19,14 +17,16 @@ class Removebg {
   static Future<ImageProvider> removebg(ImageProvider imageProvider_) async {
     try {
       // Convert ImageProvider to Unint8List
-
       Uint8List? imageBytes = await _imageProviderToBytes(imageProvider_);
 
       if (imageBytes == null) {
         throw Exception('Invalid Image');
       }
 
-      // load the ONNX model for background segmentation
+      // Initialize the ONNX runtime environment
+      OrtEnv.instance.init();
+
+      // Load the ONNX model for background segmentation
       final sessionOptions = OrtSessionOptions();
       const rawAssetFileName = 'assets/isnet_quint8'; // smaller model
       final modelBytes = await rootBundle.load(rawAssetFileName);
@@ -36,17 +36,28 @@ class Removebg {
       // Preprocess the image
       final preprocessedImage = _preprocessImage(imageBytes);
 
+      // Create OrtValueTensor for input
+      final inputOrt = OrtValueTensor.createTensorWithDataList(
+          preprocessedImage, [1, 3, 512, 512]);
+      final inputs = {'input': inputOrt};
+
       // Run inference
-      final inputs = {
-        'input': preprocessedImage,
-      };
+      final runOptions = OrtRunOptions();
+      final outputs = await session.runAsync(runOptions, inputs);
 
-      final outputs = session
-          .run(OrtRunOptions(), inputs.cast<String, OrtValue>(), ['output']);
+      // Release resources
+      inputOrt.release();
+      runOptions.release();
+      outputs?.forEach((element) {
+        element?.release();
+      });
 
-      // process segmentation mask
-      final mask = outputs[0] as Uint8List;
+      // Process segmentation mask
+      final mask = outputs?[0] as Uint8List;
       final processedImage = _applyMask(imageBytes, mask);
+
+      // Release the ONNX runtime environment
+      OrtEnv.instance.release();
 
       return MemoryImage(processedImage);
     } catch (e) {
@@ -80,13 +91,13 @@ class Removebg {
           );
       return completer.future;
     } catch (e) {
-      pragma('Image conversion error: $e');
+      print('Image conversion error: $e');
       return null;
     }
   }
 
   /// Preprocesses image for ONNX model input
-  static Uint8List _preprocessImage(Uint8List imageBytes) {
+  static Float32List _preprocessImage(Uint8List imageBytes) {
     // Decode the image
     final image = img.decodeImage(imageBytes);
 
@@ -109,20 +120,15 @@ class Removebg {
         final index = (y * resizedImage.width + x);
 
         // Normalize Pixel Values to [-1, 1]
-        floatList[index] = (pixel.r / 255.0 - 0.5 * 2.0);
+        floatList[index] = (pixel.r / 255.0 - 0.5) * 2.0;
         floatList[index + resizedImage.width * resizedImage.height] =
-            (pixel.g / 255.0 - 0.5 * 2.0);
+            (pixel.g / 255.0 - 0.5) * 2.0;
         floatList[index + 2 * resizedImage.width * resizedImage.height] =
-            (pixel.b / 255.0 - 0.5 * 2.0);
+            (pixel.b / 255.0 - 0.5) * 2.0;
       }
     }
 
-    return floatList.buffer.asUint8List();
-  }
-
-  static Future<ImageProvider> loadOnnxModel(
-      ImageProvider imageProvider_) async {
-    return imageProvider_;
+    return floatList;
   }
 
   /// Applies segmentation mask to remove background
